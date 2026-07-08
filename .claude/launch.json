@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "abroad",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Users/ethangoldstein/AI-WORK/ABROAD",
+      "port": 5179
+    }
+  ]
+}
