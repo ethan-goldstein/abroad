@@ -431,6 +431,11 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* builder credit / contact */}
+      <a className="site-credit" href="mailto:ethan.goldstein.dev@gmail.com">
+        by Ethan Goldstein · ethan.goldstein.dev@gmail.com
+      </a>
     </>
   )
 }
