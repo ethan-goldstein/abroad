@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
@@ -76,9 +76,94 @@ function FlowCursor({ label }) {
   )
 }
 
-function Photo({ trip, className }) {
+// One slide. Almost every photo is a 3:4 vertical phone shot, so the frame is
+// portrait and `cover` trims a sliver; the occasional landscape shot is detected
+// on load and switched to `contain` over a blurred copy of itself rather than
+// being cropped to ribbons.
+function Slide({ item, trip, active, eager }) {
   const [err, setErr] = useState(false)
-  if (err || !trip.photo) {
+  const [wide, setWide] = useState(false)
+  const videoRef = useRef(null)
+  const isVideo = typeof item === 'object' && item.type === 'video'
+  const file = isVideo ? item.src : item
+  const src = `${BASE}photos/${file}`
+
+  // only the visible slide decodes/plays — 18 sections of autoplaying video would
+  // hammer the machine and fight the WebGL globe for frames
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (active) v.play().catch(() => {})
+    else v.pause()
+  }, [active])
+
+  if (err) {
+    return (
+      <div className="slide photo-fallback" aria-hidden={!active}>
+        <span>{trip.title}</span>
+        <em>{trip.place}</em>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`slide ${active ? 'active' : ''} ${wide ? 'wide' : ''}`} aria-hidden={!active}>
+      {wide && <div className="slide-bg" style={{ backgroundImage: `url(${src})` }} />}
+      {isVideo ? (
+        <video
+          ref={videoRef}
+          src={src}
+          muted
+          loop
+          playsInline
+          preload={eager ? 'metadata' : 'none'}
+          onLoadedMetadata={(e) => setWide(e.target.videoWidth > e.target.videoHeight)}
+          onError={() => setErr(true)}
+        />
+      ) : (
+        <img
+          src={src}
+          alt={`${trip.title} — ${trip.place}`}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          style={trip.focus ? { objectPosition: trip.focus } : undefined}
+          onLoad={(e) => setWide(e.target.naturalWidth > e.target.naturalHeight)}
+          onError={() => setErr(true)}
+        />
+      )}
+      {isVideo && <span className="slide-badge">▶ VIDEO</span>}
+    </div>
+  )
+}
+
+// Paged gallery. Navigation is click/swipe only — never wheel or scroll, which
+// would fight the Lenis smooth-scroll driving the globe camera.
+function Gallery({ trip, variant, className }) {
+  const items = trip.media || []
+  const n = items.length
+  const [i, setI] = useState(0)
+  const touchX = useRef(null)
+
+  const go = useCallback(
+    (d) => setI((p) => (p + d + n) % n),
+    [n],
+  )
+
+  // reset when the modal swaps to a different trip
+  useEffect(() => setI(0), [trip.id])
+
+  // arrow keys drive the modal gallery (ESC is handled by the modal itself)
+  useEffect(() => {
+    if (variant !== 'modal' || n < 2) return
+    const onKey = (e) => {
+      if (e.key === 'ArrowLeft') go(-1)
+      else if (e.key === 'ArrowRight') go(1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [variant, n, go])
+
+  if (!n) {
     return (
       <div className={`photo-fallback ${className || ''}`}>
         <span>{trip.title}</span>
@@ -86,14 +171,59 @@ function Photo({ trip, className }) {
       </div>
     )
   }
+
+  const onTouchStart = (e) => (touchX.current = e.changedTouches[0].clientX)
+  const onTouchEnd = (e) => {
+    if (touchX.current == null) return
+    const dx = e.changedTouches[0].clientX - touchX.current
+    if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
+    touchX.current = null
+  }
+
   return (
-    <img
-      className={className}
-      src={`${BASE}photos/${trip.photo}`}
-      alt={`${trip.title} — ${trip.place}`}
-      loading="lazy"
-      onError={() => setErr(true)}
-    />
+    <div className={`gallery gallery-${variant} ${className || ''}`}>
+      <div className="gallery-frame" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {items.map((item, k) => (
+          // keep only the neighbours mounted so a 6-photo trip doesn't load 6 files
+          Math.abs(k - i) <= 1 || (i === 0 && k === n - 1) || (i === n - 1 && k === 0) ? (
+            <Slide key={k} item={item} trip={trip} active={k === i} eager={k === i} />
+          ) : (
+            <div key={k} className="slide" aria-hidden="true" />
+          )
+        ))}
+
+        {n > 1 && (
+          <>
+            <button
+              className="gal-arrow prev"
+              onClick={() => go(-1)}
+              aria-label="Previous photo"
+            >
+              ‹
+            </button>
+            <button className="gal-arrow next" onClick={() => go(1)} aria-label="Next photo">
+              ›
+            </button>
+            <span className="gal-count">
+              {i + 1} / {n}
+            </span>
+          </>
+        )}
+      </div>
+
+      {n > 1 && (
+        <div className="gal-dots">
+          {items.map((_, k) => (
+            <button
+              key={k}
+              className={`gal-dot ${k === i ? 'on' : ''}`}
+              onClick={() => setI(k)}
+              aria-label={`Photo ${k + 1} of ${n}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -358,7 +488,7 @@ export default function App() {
               <p className="trip-place tc-anim">{trip.place}</p>
               <p className="trip-blurb tc-anim">{trip.blurb}</p>
               <p className="trip-highlights tc-anim">{trip.highlights.join(' / ')}</p>
-              <Photo trip={trip} className="trip-photo tc-anim" />
+              <Gallery trip={trip} variant="card" className="trip-photo tc-anim" />
             </div>
           </section>
         ))}
@@ -418,7 +548,7 @@ export default function App() {
             <button className="modal-close" onClick={closeModal}>
               ✕
             </button>
-            <Photo trip={selected} className="modal-photo" />
+            <Gallery trip={selected} variant="modal" className="modal-photo" />
             <div className="modal-body">
               <p className="trip-eyebrow">
                 W{selected.num} — {selected.month} · {selected.tag}

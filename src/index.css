@@ -385,23 +385,142 @@ button {
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
 }
 
+/* ---------- galleries ----------
+   Frames are 4:5 upright: nearly every photo is a 3:4 vertical phone shot, so a
+   wide frame would crop most of each image away. */
 .trip-photo {
-  width: min(460px, 100%);
-  aspect-ratio: 3 / 2;
-  object-fit: cover;
-  display: block;
+  width: min(340px, 78vw);
   margin-top: 28px;
+}
+.gallery-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
   border-radius: 4px;
+  background: rgba(6, 10, 22, 0.55);
   box-shadow:
     0 30px 80px rgba(0, 0, 0, 0.6),
     0 0 60px color-mix(in srgb, var(--tc) 12%, transparent);
-  -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
 }
+.slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+}
+.slide.active {
+  opacity: 1;
+}
+.slide img,
+.slide video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  position: relative;
+}
+/* landscape shots sit whole inside the tall frame over a blurred fill
+   instead of being cropped to a ribbon */
+.slide.wide img,
+.slide.wide video {
+  object-fit: contain;
+}
+.slide-bg {
+  position: absolute;
+  inset: -12%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(26px) saturate(0.8) brightness(0.55);
+}
+.slide-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  padding: 4px 8px;
+  border-radius: 2px;
+  color: rgba(238, 242, 255, 0.92);
+  background: rgba(4, 7, 16, 0.6);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.gal-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: rgba(238, 242, 255, 0.95);
+  background: rgba(4, 7, 16, 0.5);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.25s ease, background 0.25s ease;
+}
+.gallery-frame:hover .gal-arrow,
+.gal-arrow:focus-visible {
+  opacity: 1;
+}
+.gal-arrow:hover {
+  background: color-mix(in srgb, var(--tc) 55%, rgba(4, 7, 16, 0.7));
+}
+.gal-arrow.prev {
+  left: 8px;
+}
+.gal-arrow.next {
+  right: 8px;
+}
+.gal-count {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  padding: 4px 8px;
+  border-radius: 2px;
+  color: rgba(238, 242, 255, 0.85);
+  background: rgba(4, 7, 16, 0.55);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.gal-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 12px;
+}
+.trip-section.right .gal-dots {
+  justify-content: flex-end;
+}
+.gal-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgba(238, 242, 255, 0.24);
+  transition: background 0.25s ease, transform 0.25s ease;
+}
+.gal-dot:hover {
+  background: rgba(238, 242, 255, 0.5);
+}
+.gal-dot.on {
+  background: var(--tc, #ff8a3c);
+  transform: scale(1.3);
+}
+
 .photo-fallback {
-  width: min(460px, 100%);
-  aspect-ratio: 3 / 2;
-  margin-top: 28px;
+  width: 100%;
+  aspect-ratio: 4 / 5;
   border-radius: 4px;
   background:
     radial-gradient(340px 200px at 28% 22%, color-mix(in srgb, var(--tc, #ff8a3c) 20%, transparent), transparent 70%),
@@ -411,8 +530,9 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
+}
+.trip-photo.photo-fallback {
+  margin-top: 28px;
 }
 .photo-fallback span {
   font-family: var(--display);
@@ -588,12 +708,25 @@ button {
 .modal-photo,
 .modal .photo-fallback {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
   margin-top: 0;
+}
+.modal-photo .gallery-frame,
+.modal .photo-fallback {
+  aspect-ratio: 4 / 5;
+  max-height: 62vh;
+  margin-inline: auto;
   border-radius: 4px;
-  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+}
+.modal-photo .gallery-frame {
+  width: auto;
+  aspect-ratio: 4 / 5;
+}
+.modal-photo .gal-dots {
+  justify-content: center;
+}
+/* modal arrows stay visible — no hover affordance on touch */
+.modal-photo .gal-arrow {
+  opacity: 1;
 }
 .modal-body {
   padding: 0 6px 10px;
@@ -663,6 +796,20 @@ button {
   }
   .stats {
     gap: 26px;
+  }
+  /* the section flips to left-aligned here, so the dots follow */
+  .trip-section.right .gal-dots {
+    justify-content: flex-start;
+  }
+  .trip-photo {
+    width: min(340px, 86vw);
+  }
+}
+
+/* no hover on touch — arrows stay visible so the gallery is discoverable */
+@media (hover: none) {
+  .gal-arrow {
+    opacity: 1;
   }
 }
 

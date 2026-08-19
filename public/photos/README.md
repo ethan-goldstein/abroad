@@ -1,18 +1,53 @@
-# Drop your trip photos in this folder
+# Published photos
 
-The site looks for these exact filenames (any missing photo shows a styled
-placeholder instead, so nothing breaks). From the 5 photos you already have:
+**Don't edit this folder by hand.** Everything here is generated from the
+full-resolution originals in `photos-src/` (gitignored, never committed) by:
 
-- `morocco.jpg`    → camel caravan selfie at sunset
-- `florence.jpg`   → Piazzale Michelangelo sunset over the Duomo
-- `amsterdam.jpg`  → Gunna concert (blue stage)
-- `prague.jpg`     → Lennon Wall
-- `amalfi.jpg`     → balcony sunset over the sea
+```
+python3 scripts/optimize-photos.py
+```
 
-Remaining slots (add whenever):
+That step bakes in EXIF rotation, caps the long edge at 1600px, re-encodes as
+progressive JPEG, and **strips all metadata — including the GPS coordinates every
+iPhone photo carries**. Videos become muted H.264 MP4. Current batch: 145MB → 15MB.
 
-- `tuscany.jpg`, `rome.jpg`, `pompeii.jpg`, `milan.jpg`, `switzerland.jpg`,
-  `paris.jpg`, `london.jpg`, `bologna.jpg`, `springbreak.jpg`, `timeout.jpg`,
-  `pisa.jpg`, `family.jpg`, `malta.jpg`
+## Adding photos
 
-To change a filename or add trips, edit `src/data.js`.
+1. Drop the originals into `photos-src/` (any filename, any orientation).
+2. Add a `('original name.jpeg', 'tripid-N.jpg')` row to `MANIFEST` in
+   `scripts/optimize-photos.py`.
+3. Run the script.
+4. Add the new filename to that trip's `media` array in `src/data.js`.
+
+## Naming
+
+`<tripId>-<n>.jpg`, matching the trip `id` in `src/data.js` — `prague-1.jpg`,
+`morocco-4.jpg`. Videos use `.mp4` and are declared as
+`{ src: 'amalfi-4.mp4', type: 'video' }`.
+
+## Current coverage
+
+| Trip | Items |
+| --- | --- |
+| florence | **none — shows the placeholder** |
+| tuscany, rome, pompeii, switzerland, bologna, timeout | 1 each |
+| milan | 1 + video |
+| paris, london, pisa | 2 each |
+| springbreak, prague, amsterdam, family | 3 each |
+| amalfi | 3 + video |
+| malta | 5 |
+| morocco | 6 |
+
+41 items total. Trips with one item render without arrows or dots; an empty
+`media` array falls back to the styled placeholder.
+
+## Framing
+
+Frames are **4:5 upright**, because 37 of 39 photos are vertical phone shots.
+Landscape images are detected on load and shown whole (`contain`) over a blurred
+copy of themselves rather than being cropped. To nudge a crop, add `focus` to that
+trip in `src/data.js`:
+
+```js
+focus: 'center 30%',   // any CSS object-position value
+```

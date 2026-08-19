@@ -8,3 +8,6 @@ dist-ssr
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# full-resolution photo originals (never committed — see scripts/optimize-photos.sh)
+photos-src
