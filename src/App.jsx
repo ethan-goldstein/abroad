@@ -301,8 +301,11 @@ export default function App() {
         const vT = latLonToVec3(to.lat, to.lon, 1)
         const angle = vF.angleTo(vT)
         const sinA = Math.sin(angle)
-        // stay low: barely climb on short hops, modest rise on long ones
-        const climb = 0.06 + Math.min(angle * 0.5, 0.55)
+        // Cruise high enough that the global texture still reads. Short hops used
+        // to level off around 380 km, which is the worst of both worlds: too high
+        // for city imagery, far too low for a 9.8 km/px earth texture, so the
+        // whole transit was a blur.
+        const climb = 0.26 + Math.min(angle * 0.5, 0.55)
         ScrollTrigger.create({
           trigger: section,
           start: 'top bottom',
@@ -349,6 +352,8 @@ export default function App() {
               globe.setActive(TRIPS[i].id)
             }
           },
+          // the city outline traces on with the scroll rather than on a timer
+          onUpdate: (self) => globe.setArrivalProgress(TRIPS[i].id, self.progress),
         })
       })
 

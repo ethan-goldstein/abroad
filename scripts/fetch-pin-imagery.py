@@ -231,6 +231,30 @@ def main():
             json.dump(data, open(op, 'w'))
             print('outline overflows its crop, reticle instead: ' + ', '.join(demoted))
 
+    # Write each trip's camera distance back into data.js. Crops run 9 km to 35
+    # km, so a single distance framed the small ones tiny and cut the big ones in
+    # half. Filling by height is aspect-independent, so it holds on any window.
+    FOV = 40
+    half = math.tan(math.radians(FOV / 2))
+    src = open(DATA, encoding='utf-8').read()
+    changed = 0
+    for m in meta:
+        alt_km = m['widthKm'] / (2 * half)
+        zoom = round(1 + alt_km / 6371.0, 5)
+        blk = re.search(rf"(    id: '{m['id']}',)(.*?)(\n  \}},)", src, re.S)
+        if not blk:
+            continue
+        body = blk.group(2)
+        if 'zoom:' in body:
+            new_body = re.sub(r"\n    zoom: [\d.]+,", f"\n    zoom: {zoom},", body)
+        else:
+            new_body = body.replace(blk.group(2).rstrip(),
+                                    blk.group(2).rstrip() + f"\n    zoom: {zoom},", 1)
+        src = src[:blk.start()] + blk.group(1) + new_body + blk.group(3) + src[blk.end():]
+        changed += 1
+    open(DATA, 'w', encoding='utf-8').write(src)
+    print(f'wrote per-trip camera distance into {DATA} ({changed} trips)')
+
     print(f'\n{len(meta)} crops, {total/1e6:.1f}MB total')
     print(f'attribution required on-site:\n  {ATTRIBUTION}')
 

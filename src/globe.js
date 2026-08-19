@@ -122,8 +122,10 @@ export class TravelGlobe {
     this.container.appendChild(this.renderer.domElement)
 
     // bright, even illumination so the 4K texture reads crisp everywhere
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.85))
+    this._amb = new THREE.AmbientLight(0xffffff, 0.85)
+    this.scene.add(this._amb)
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.25)
+    this._sun = sun
     sun.position.set(3, 2.2, 3.5)
     this.scene.add(sun)
     const rim = new THREE.DirectionalLight(0x6a8fff, 0.25)
@@ -329,15 +331,19 @@ export class TravelGlobe {
 
     // start fetching a little before the imagery is needed so it has time to
     // decode; below ~0.012 (75 km) it is fully opaque
-    // 18 km of ground only fills the frame below ~50 km altitude; fading in any
-    // higher leaves a sharp stamp floating in blur
-    const altFade = 1 - THREE.MathUtils.smoothstep(alt, 0.0045, 0.013)
+    // Fade on how much of the frame the crop actually covers, not on raw
+    // altitude. Crops run 9 km to 35 km and each trip now settles at its own
+    // distance, so a fixed altitude band would leave the big ones half faded.
+    const visible = 2 * alt * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))
+    const winnerMeta = this._detailMeta.get(this.activeId) || null
+    const spanRad = winnerMeta ? ((winnerMeta.east - winnerMeta.west) * Math.PI) / 180 : 0.003
+    const altFade = THREE.MathUtils.smoothstep(spanRad / Math.max(visible, 1e-6), 0.5, 0.85)
 
     // Prefetch generously — neighbours loading early is good. Only ever SHOW
     // one, though: Florence, Tuscany and Spring Break sit 0.25 degrees apart,
     // so a proximity test alone lights three patches at once and they read as
     // squares pasted on the globe.
-    if (alt < 0.06) {
+    if (altFade > 0.001 || alt < 0.02) {
       for (const [id, m] of this._detailMeta) {
         if (camDir.dot(latLonToVec3(m.lat, m.lon, 1)) > 0.9985) this._ensureDetail(id)
       }
@@ -498,6 +504,12 @@ export class TravelGlobe {
     return entry
   }
 
+  // called from the per-section ScrollTrigger so the boundary traces on as the
+  // section scrolls into view
+  setArrivalProgress(id, p) {
+    this._scrollP = { id, p }
+  }
+
   _updateArrival(t, altFade) {
     if (!this._outlineMeta) return
     const active = !this.explore && this.activeId ? this.activeId : null
@@ -512,8 +524,14 @@ export class TravelGlobe {
       const target = on * altFade
       e.a += (target - e.a) * 0.09
 
+      // Scroll drives the trace when there is scroll to read; explore mode has
+      // none, so it falls back to a timed draw on arrival.
       const elapsed = this._arrival && this._arrival.id === id ? t - this._arrival.start : 0
-      const draw = THREE.MathUtils.clamp(elapsed / 1.3, 0, 1)
+      const scrolled = this._scrollP && this._scrollP.id === id ? this._scrollP.p : null
+      const draw =
+        scrolled != null && !this.explore
+          ? THREE.MathUtils.clamp(scrolled / 0.55, 0, 1)
+          : THREE.MathUtils.clamp(elapsed / 1.3, 0, 1)
       const eased = draw * draw * (3 - 2 * draw)
 
       for (const { line, len } of e.lines) {
@@ -524,8 +542,11 @@ export class TravelGlobe {
         line.visible = e.a > 0.01
       }
       if (e.dim) {
-        // dim only after the line has closed, or it reads as a rendering fault
-        const after = THREE.MathUtils.clamp((elapsed - 1.3) / 0.7, 0, 1)
+        // dim only once the line has closed, or it reads as a rendering fault
+        const after =
+          scrolled != null && !this.explore
+            ? THREE.MathUtils.clamp((scrolled - 0.55) / 0.25, 0, 1)
+            : THREE.MathUtils.clamp((elapsed - 1.3) / 0.7, 0, 1)
         e.dim.material.opacity = e.a * after * 0.38
         e.dim.visible = e.dim.material.opacity > 0.01
       }
@@ -834,31 +855,35 @@ export class TravelGlobe {
       pin._a = a
     }
 
-    // Pins are wayfinding for the wide view. Up close they'd swallow the
-    // satellite imagery, so they shrink past the old 0.55 floor and fade out.
+    // Pins belong to the explore map, where they are clickable. In the scroll
+    // story each section already carries its own title, so a pin there is just a
+    // dot sitting on top of the imagery. Arcs stay — they draw the route.
     const alt = this.camera.position.length() - 1
-    const closeUp = 1 - THREE.MathUtils.smoothstep(alt, 0.012, 0.075)
     const ps = THREE.MathUtils.clamp(alt * 1.05, 0.02, 1.9)
     for (const pin of this.pins) {
       const pulse = pin._active
         ? 1.3 + Math.sin(t * 3.2) * 0.25
         : 1 + Math.sin(t * 2 + pin.trip.lat) * 0.12
-      const a = pin._a * (1 - closeUp)
+      const a = this.explore ? pin._a : 0
       pin.ring.scale.setScalar(Math.max(ps * pulse * a, 0.0001))
       pin.dot.scale.setScalar(Math.max(ps * (pin._active ? 1.4 : 1) * a, 0.0001))
       pin.ring.visible = a > 0.02
       pin.dot.visible = a > 0.02
     }
+    // hit spheres stay live so explore-mode clicks still open a weekend
     for (const hit of this.hitMeshes) hit.scale.setScalar(Math.max(ps, 0.8))
 
     const _af = this._updateDetail()
     this._updateArrival(t, _af || 0)
 
-    // fade the rim glow out before the camera crosses into the r1.12 shell
+    // Clouds and the rim glow are both wide-view dressing and share one band.
+    // Clouds used to fade on the close-up curve, which left them at ~0.3 opacity
+    // 400 km up — a 4096px texture magnified that far is a screen-sized smear,
+    // not weather.
+    const wide = THREE.MathUtils.smoothstep(this.camera.position.length(), 1.1, 1.25)
     if (this.atmo) {
-      const a = THREE.MathUtils.smoothstep(this.camera.position.length(), 1.1, 1.25)
-      this.atmo.material.uniforms.uOpacity.value = a
-      this.atmo.visible = a > 0.002
+      this.atmo.material.uniforms.uOpacity.value = wide
+      this.atmo.visible = wide > 0.002
     }
 
     for (const s of this.starGroups) {
@@ -866,10 +891,21 @@ export class TravelGlobe {
     }
     if (this.clouds) {
       this.clouds.rotation.y += 0.00016
-      // the cloud shell is at r1.005 and the camera can reach r1.004 — without
-      // this you end up underneath it looking up through overcast
-      this.clouds.material.opacity = 0.34 * (1 - closeUp)
-      this.clouds.visible = closeUp < 0.985
+      this.clouds.material.opacity = 0.34 * wide
+      this.clouds.visible = wide > 0.006
+    }
+
+    // Fade the world down on approach. The global texture is ~9.8 km/px, so up
+    // close it is pure blur; unlighting it means there is nothing soft to look at
+    // and the sharp city imagery is the only lit thing in frame.
+    if (this.earth) {
+      // Cross-fade against the patch, not against altitude. Keyed to altitude
+      // these two curves left a dark gap mid-descent where the world had already
+      // dimmed but the imagery had not yet arrived.
+      const lit = 1 - 0.82 * (_af || 0)
+      this.earth.material.color.setScalar(lit)
+      if (this._sun) this._sun.intensity = 1.25 * lit
+      if (this._amb) this._amb.intensity = 0.1 + 0.75 * lit
     }
     this.renderer.render(this.scene, this.camera)
   }
