@@ -27,9 +27,11 @@ import time
 import urllib.error
 import urllib.request
 
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 
-ZOOM = 13           # z13 ~= 14 m/px at mid latitudes; Sentinel-2 is upsampled past z14
+ZOOM = 13           # default; per-city zoom is chosen to fit the boundary
+MIN_ZOOM, MAX_ZOOM = 12, 14   # below z12 the ground detail stops being worth showing   # past z14 Sentinel-2 is upsampled, no real detail
+BOUNDARY_FILL = 0.72          # boundary should span this much of the crop
 OUT_PX = 1280       # ~18 km across
 TILE = 256
 QUALITY = 78
@@ -102,8 +104,31 @@ def fetch_tile(z, x, y):
     return Image.open(io.BytesIO(blob)).convert('RGB')
 
 
-def bake(trip_id, lat, lon):
-    cx, cy = lonlat_to_world_px(lon, lat, ZOOM)
+def zoom_for(bbox):
+    """Pick the tightest zoom where the boundary still fits the crop.
+
+    One fixed zoom made Prague's outline spill off its own imagery while
+    Valletta's sat as a speck in the middle — the crop has to match the city.
+    """
+    if not bbox:
+        return ZOOM
+    w = max(bbox[2] - bbox[0], 1e-4)
+    h = max(bbox[3] - bbox[1], 1e-4)
+    best = MIN_ZOOM
+    for z in range(MIN_ZOOM, MAX_ZOOM + 1):
+        span_lon = OUT_PX / (TILE * (2 ** z)) * 360.0
+        # crop is square in pixels, so its latitude span is narrower by cos(lat)
+        mid = math.radians((bbox[1] + bbox[3]) / 2)
+        span_lat = span_lon * math.cos(mid)
+        if w <= span_lon * BOUNDARY_FILL and h <= span_lat * BOUNDARY_FILL:
+            best = z
+    return best
+
+
+def bake(trip_id, lat, lon, zoom=ZOOM):
+    global ZOOM_USED
+    ZOOM_USED = zoom
+    cx, cy = lonlat_to_world_px(lon, lat, zoom)
     left, top = cx - OUT_PX / 2, cy - OUT_PX / 2
     tx0, ty0 = math.floor(left / TILE), math.floor(top / TILE)
     tx1 = math.floor((left + OUT_PX - 1) / TILE)
@@ -113,26 +138,33 @@ def bake(trip_id, lat, lon):
     got = 0
     for ty in range(ty0, ty1 + 1):
         for tx in range(tx0, tx1 + 1):
-            t = fetch_tile(ZOOM, tx, ty)
+            t = fetch_tile(zoom, tx, ty)
             if t is not None:
                 canvas.paste(t, ((tx - tx0) * TILE, (ty - ty0) * TILE))
                 got += 1
 
     ox, oy = int(round(left - tx0 * TILE)), int(round(top - ty0 * TILE))
     crop = canvas.crop((ox, oy, ox + OUT_PX, oy + OUT_PX))
+    # Sentinel-2 is hazy and blue-grey out of the box, and it is being viewed on a
+    # dark page — without a grade the terrain reads as mud.
+    crop = ImageEnhance.Brightness(crop).enhance(1.18)
+    crop = ImageEnhance.Contrast(crop).enhance(1.42)
+    crop = ImageEnhance.Color(crop).enhance(1.30)
+    crop = crop.filter(ImageFilter.UnsharpMask(radius=1.6, percent=60, threshold=3))
 
     os.makedirs(OUT_DIR, exist_ok=True)
     dst = os.path.join(OUT_DIR, f'{trip_id}.jpg')
     crop.save(dst, 'JPEG', quality=QUALITY, optimize=True, progressive=True)
 
     # exact footprint so the globe can size its patch to match the pixels
-    lon_w, lat_n = world_px_to_lonlat(left, top, ZOOM)
-    lon_e, lat_s = world_px_to_lonlat(left + OUT_PX, top + OUT_PX, ZOOM)
-    m_per_px = 156543.03392 / (2 ** ZOOM) * math.cos(math.radians(lat))
+    lon_w, lat_n = world_px_to_lonlat(left, top, zoom)
+    lon_e, lat_s = world_px_to_lonlat(left + OUT_PX, top + OUT_PX, zoom)
+    m_per_px = 156543.03392 / (2 ** zoom) * math.cos(math.radians(lat))
     return {
         'id': trip_id,
         'lat': lat, 'lon': lon,
         'north': lat_n, 'south': lat_s, 'west': lon_w, 'east': lon_e,
+        'zoom': zoom,
         'mPerPx': round(m_per_px, 2),
         'widthKm': round(OUT_PX * m_per_px / 1000, 1),
         'bytes': os.path.getsize(dst),
@@ -148,17 +180,56 @@ def main():
         sys.exit('parsed no trips out of data.js')
     print(f'{len(trips)} pins, z{ZOOM}, {OUT_PX}px crops\n')
 
+    bboxes = {}
+    op = os.path.join(OUT_DIR, 'outlines.json')
+    if os.path.exists(op):
+        for o in json.load(open(op))['outlines']:
+            if o.get('bbox'):
+                bboxes[o['id']] = o['bbox']
+
     meta, total = [], 0
     for tid, lat, lon in trips:
-        info = bake(tid, lat, lon)
+        bb = bboxes.get(tid)
+        # centre the crop on the boundary, not the pin — the pin sits wherever the
+        # trip happened, which can push a large city off the edge of its own frame
+        clon, clat = lon, lat
+        if bb:
+            blon, blat = (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2
+            # Only nudge if the boundary sits essentially under the pin. The camera
+            # flies to the PIN, so recentring on a distant centroid (the Swiss Alps
+            # pin is ~40 km from Lauterbrunnen) puts the imagery off-screen entirely.
+            if abs(blon - lon) < 0.05 and abs(blat - lat) < 0.05:
+                clon, clat = blon, blat
+        info = bake(tid, clat, clon, zoom_for(bb))
         meta.append(info)
         total += info['bytes']
-        print(f"  {tid:<12} {info['widthKm']:>5.1f}km  {info['mPerPx']:>5.1f}m/px  "
+        print(f"  {tid:<12} z{info['zoom']:<2} {info['widthKm']:>5.1f}km  {info['mPerPx']:>5.1f}m/px  "
               f"{info['tiles']:>2} tiles  {info['bytes']/1000:>6.0f}KB")
 
     with open(os.path.join(OUT_DIR, 'index.json'), 'w') as f:
-        json.dump({'attribution': ATTRIBUTION, 'zoom': ZOOM,
+        json.dump({'attribution': ATTRIBUTION,
                    'size': OUT_PX, 'patches': meta}, f, indent=2)
+
+    # A boundary that still doesn't fit at the floor zoom (Pisa's comune is 0.76
+    # deg across) cannot be drawn honestly over this crop — demote it to the
+    # reticle rather than stranding a line off the edge of its own imagery.
+    if os.path.exists(op):
+        data = json.load(open(op))
+        by_id = {m['id']: m for m in meta}
+        demoted = []
+        for o in data['outlines']:
+            m = by_id.get(o['id'])
+            if not (o.get('hasOutline') and m and o.get('bbox')):
+                continue
+            bb = o['bbox']
+            if (bb[0] < m['west'] or bb[2] > m['east']
+                    or bb[1] < m['south'] or bb[3] > m['north']):
+                o['hasOutline'] = False
+                o['rings'] = []
+                demoted.append(o['id'])
+        if demoted:
+            json.dump(data, open(op, 'w'))
+            print('outline overflows its crop, reticle instead: ' + ', '.join(demoted))
 
     print(f'\n{len(meta)} crops, {total/1e6:.1f}MB total')
     print(f'attribution required on-site:\n  {ATTRIBUTION}')

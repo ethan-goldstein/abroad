@@ -268,7 +268,7 @@ export default function App() {
       ...TRIPS.map((t) => ({
         lat: t.lat,
         lon: t.lon,
-        dist: t.zoom ?? 1.006,
+        dist: t.zoom ?? 1.0038,
         route: -1, // filled below
       })),
       { lat: 42, lon: 8, dist: 3.6, route: ROUTE.length - 1 },
@@ -509,7 +509,8 @@ export default function App() {
               {META.name} · SPRING '26 · THE TIME OF MY LIFE
               <em className="credit-imagery">
                 Satellite imagery: Sentinel-2 cloudless by EOX IT Services GmbH
-                (contains modified Copernicus Sentinel data 2024)
+                (contains modified Copernicus Sentinel data 2024) · City boundaries
+                © OpenStreetMap contributors
               </em>
             </span>
           </div>
