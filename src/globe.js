@@ -67,6 +67,7 @@ export class TravelGlobe {
     this._buildStars()
     this._bindEvents()
     this._loadEarth()
+    this._initDetail()
 
     this._loop = this._loop.bind(this)
     this._raf = requestAnimationFrame(this._loop)
@@ -75,11 +76,18 @@ export class TravelGlobe {
   _initScene() {
     const { clientWidth: w, clientHeight: h } = this.container
     this.scene = new THREE.Scene()
-    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 200)
+    // near must be tiny to descend to ~25 km altitude without clipping the
+    // surface; the resulting near/far ratio needs the log depth buffer below
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.0002, 300)
     this.camera.position.copy(latLonToVec3(this.view.lat, this.view.lon, this.view.dist))
     this.camera.lookAt(0, 0, 0)
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      // near/far spans ~1e6 so a normal depth buffer z-fights badly
+      logarithmicDepthBuffer: true,
+    })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(w, h)
     this.container.appendChild(this.renderer.domElement)
@@ -98,8 +106,11 @@ export class TravelGlobe {
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.06
     this.controls.enablePan = false
-    this.controls.minDistance = 1.18
-    this.controls.maxDistance = 4.5
+    this.controls.minDistance = 1.004   // ~25 km altitude
+    this.controls.maxDistance = 14      // stars start at r16 — stay inside them
+    // default steps are far too coarse across a 1.004..14 range
+    this.controls.zoomSpeed = 0.75
+    this.controls.zoomToCursor = true
     this.controls.autoRotate = false
     this.controls.autoRotateSpeed = 0.35
 
@@ -193,6 +204,101 @@ export class TravelGlobe {
     } catch (e) {
       console.warn('earth textures failed to load, keeping placeholder', e)
     }
+  }
+
+  // ---- high-resolution pin imagery -------------------------------------
+  // The global Blue Marble texture is ~9.8 km/px, so descending into a city
+  // just magnifies blur. Each pin has a pre-baked Sentinel-2 crop (~14 m/px)
+  // that fades in as the camera drops, laid on a curved patch that hugs the
+  // sphere so it can't z-fight the surface underneath.
+  async _initDetail() {
+    this.detail = new Map()
+    this._detailMeta = null
+    try {
+      const res = await fetch(`${import.meta.env.BASE_URL}earth/detail/index.json`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      this._detailMeta = new Map(json.patches.map((p) => [p.id, p]))
+    } catch (e) {
+      // no imagery baked yet — the globe just keeps its global texture
+      console.warn('pin imagery index unavailable, skipping detail patches', e)
+    }
+  }
+
+  // Build the patch + kick off its texture. Safe to call repeatedly.
+  _ensureDetail(id) {
+    if (!this._detailMeta || this.detail.has(id)) return this.detail.get(id)
+    const m = this._detailMeta.get(id)
+    if (!m) return null
+
+    // Three's sphere: phi is azimuth, theta polar from +Y. This globe places
+    // points at phi = lon + PI, theta = 90 - lat (see latLonToVec3).
+    const d2r = THREE.MathUtils.degToRad
+    const thetaStart = d2r(90 - m.north)
+    const thetaLength = d2r(m.north - m.south)
+    const phiStart = d2r(m.west) + Math.PI
+    const phiLength = d2r(m.east - m.west)
+
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1.0006, 48, 48, phiStart, phiLength, thetaStart, thetaLength),
+      new THREE.MeshPhongMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        shininess: 6,
+      })
+    )
+    mesh.visible = false
+    mesh.renderOrder = 2
+    this.scene.add(mesh)
+
+    const entry = { mesh, meta: m, opacity: 0, center: latLonToVec3(m.lat, m.lon, 1) }
+    this.detail.set(id, entry)
+
+    new THREE.TextureLoader().load(
+      `${import.meta.env.BASE_URL}earth/detail/${id}.jpg`,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
+        mesh.material.map = tex
+        mesh.material.needsUpdate = true
+        entry.ready = true
+      },
+      undefined,
+      () => {
+        // texture missing: drop the patch so we fall back to the globe texture
+        this.scene.remove(mesh)
+        mesh.geometry.dispose()
+        mesh.material.dispose()
+        this.detail.delete(id)
+      }
+    )
+    return entry
+  }
+
+  _updateDetail() {
+    if (!this._detailMeta) return
+    const camDir = this.camera.position.clone().normalize()
+    const alt = this.camera.position.length() - 1
+
+    // start fetching a little before the imagery is needed so it has time to
+    // decode; below ~0.012 (75 km) it is fully opaque
+    const altFade = THREE.MathUtils.smoothstep(1 - alt / 0.09, 0, 1)
+    if (altFade > 0.01) {
+      for (const [id, m] of this._detailMeta) {
+        if (camDir.dot(latLonToVec3(m.lat, m.lon, 1)) > 0.9985) this._ensureDetail(id)
+      }
+    }
+
+    for (const entry of this.detail.values()) {
+      // only the patch the camera is actually over should show
+      const near = THREE.MathUtils.smoothstep(camDir.dot(entry.center), 0.9975, 0.9999)
+      const target = entry.ready ? altFade * near : 0
+      entry.opacity += (target - entry.opacity) * 0.12
+      entry.mesh.material.opacity = entry.opacity
+      entry.mesh.visible = entry.opacity > 0.004
+    }
+    return altFade
   }
 
   _buildPins() {
@@ -387,7 +493,7 @@ export class TravelGlobe {
     }
   }
 
-  flyTo(trip, dist = 1.5) {
+  flyTo(trip, dist = 1.05) {
     const target = latLonToVec3(trip.lat, trip.lon, dist)
     this.controls.autoRotate = false
     gsap.to(this.camera.position, {
@@ -471,9 +577,12 @@ export class TravelGlobe {
         this._raycast()
       }
     } else {
-      // camera from scroll state + a gentle drift toward the cursor
-      const lat = this.view.lat - this._par.y * 2.4
-      const lon = this.view.lon + this._par.x * 3.2
+      // Camera from scroll state + a gentle drift toward the cursor. The drift
+      // has to scale with altitude: 2.4 degrees is a nudge from orbit but ~270 km
+      // up close, which would sail straight off the pin's imagery patch.
+      const drift = THREE.MathUtils.clamp((this.view.dist - 1) / 0.6, 0.04, 1)
+      const lat = this.view.lat - this._par.y * 2.4 * drift
+      const lon = this.view.lon + this._par.x * 3.2 * drift
       this.camera.position.copy(latLonToVec3(lat, lon, this.view.dist))
       this.camera.lookAt(this.view.lx, this.view.ly, this.view.lz)
     }
@@ -488,14 +597,16 @@ export class TravelGlobe {
       pin._a = a
     }
 
-    // keep pins near-constant screen size across zoom, pulse rings
+    // Pins are wayfinding for the wide view. Up close they'd swallow the
+    // satellite imagery, so they shrink past the old 0.55 floor and fade out.
     const alt = this.camera.position.length() - 1
-    const ps = THREE.MathUtils.clamp(alt * 1.05, 0.55, 1.9)
+    const closeUp = 1 - THREE.MathUtils.smoothstep(alt, 0.012, 0.075)
+    const ps = THREE.MathUtils.clamp(alt * 1.05, 0.02, 1.9)
     for (const pin of this.pins) {
       const pulse = pin._active
         ? 1.3 + Math.sin(t * 3.2) * 0.25
         : 1 + Math.sin(t * 2 + pin.trip.lat) * 0.12
-      const a = pin._a
+      const a = pin._a * (1 - closeUp)
       pin.ring.scale.setScalar(Math.max(ps * pulse * a, 0.0001))
       pin.dot.scale.setScalar(Math.max(ps * (pin._active ? 1.4 : 1) * a, 0.0001))
       pin.ring.visible = a > 0.02
@@ -503,10 +614,18 @@ export class TravelGlobe {
     }
     for (const hit of this.hitMeshes) hit.scale.setScalar(Math.max(ps, 0.8))
 
+    this._updateDetail()
+
     for (const s of this.starGroups) {
       s.rotation.y += s.userData.spin
     }
-    if (this.clouds) this.clouds.rotation.y += 0.00016
+    if (this.clouds) {
+      this.clouds.rotation.y += 0.00016
+      // the cloud shell is at r1.005 and the camera can reach r1.004 — without
+      // this you end up underneath it looking up through overcast
+      this.clouds.material.opacity = 0.34 * (1 - closeUp)
+      this.clouds.visible = closeUp < 0.985
+    }
     this.renderer.render(this.scene, this.camera)
   }
 

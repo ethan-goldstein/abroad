@@ -264,14 +264,14 @@ export default function App() {
 
     // camera keyframes: hero → each trip → pulled-back explore view
     const keys = [
-      { lat: 45, lon: 10, dist: 3.6, route: 0 },
+      { lat: 45, lon: 10, dist: 7.2, route: 0 },
       ...TRIPS.map((t) => ({
         lat: t.lat,
         lon: t.lon,
-        dist: t.zoom ?? 1.6,
+        dist: t.zoom ?? 1.006,
         route: -1, // filled below
       })),
-      { lat: 42, lon: 8, dist: 3.1, route: ROUTE.length - 1 },
+      { lat: 42, lon: 8, dist: 3.6, route: ROUTE.length - 1 },
     ]
     TRIPS.forEach((t, i) => {
       const idx = ROUTE.indexOf(t)
@@ -507,6 +507,10 @@ export default function App() {
             </button>
             <span className="credit">
               {META.name} · SPRING '26 · THE TIME OF MY LIFE
+              <em className="credit-imagery">
+                Satellite imagery: Sentinel-2 cloudless by EOX IT Services GmbH
+                (contains modified Copernicus Sentinel data 2024)
+              </em>
             </span>
           </div>
         </section>
