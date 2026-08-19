@@ -33,7 +33,7 @@ export const TRIPS = [
     blurb:
       'Touched down January 20. Duomo views, trattoria dinners, and the city that ran the next 109 days.',
     highlights: ['Home base', 'Duomo', 'Piazzale Michelangelo', 'Trattoria dinners'],
-    photo: 'florence.jpg',
+    media: [],
     color: '#59d9ff',
   },
   {
@@ -46,9 +46,9 @@ export const TRIPS = [
     lat: 43.545,
     lon: 11.32,
     blurb:
-      'First weekend out — rolling vineyards, cellar tours, and way too many pours of Chianti Classico.',
+      'First weekend out — rolling vineyards, cellar tours, and a proper education in Chianti Classico.',
     highlights: ['Wine tour', 'Vineyards', 'Cellar tastings', 'Hill towns'],
-    photo: 'tuscany.jpg',
+    media: ['tuscany-1.jpg'],
     color: '#c05a78',
   },
   {
@@ -63,7 +63,7 @@ export const TRIPS = [
     blurb:
       'The greatest hits in one sprint — Colosseum, Spanish Steps, and a coin over the shoulder into the Trevi.',
     highlights: ['Colosseum', 'Spanish Steps', 'Trevi Fountain'],
-    photo: 'rome.jpg',
+    media: ['rome-1.jpg'],
     color: '#f2a154',
   },
   {
@@ -78,7 +78,7 @@ export const TRIPS = [
     blurb:
       'Walked a city frozen in 79 AD, then stared down the volcano that buried it.',
     highlights: ['Pompeii ruins', 'Mount Vesuvius', 'Naples'],
-    photo: 'pompeii.jpg',
+    media: ['pompeii-1.jpg'],
     color: '#ff6b4a',
   },
   {
@@ -93,7 +93,10 @@ export const TRIPS = [
     blurb:
       'Caught the Milano–Cortina 2026 Winter Games energy in the fashion capital of the world.',
     highlights: ['2026 Winter Olympics', 'Olympic crowds', 'Duomo di Milano'],
-    photo: 'milan.jpg',
+    media: [
+      'milan-1.jpg',
+      { src: 'milan-2.mp4', type: 'video' },
+    ],
     color: '#9ecbff',
   },
   {
@@ -108,7 +111,7 @@ export const TRIPS = [
     blurb:
       'Snowboarding down the Swiss Alps with views that did not look real.',
     highlights: ['Swiss Alps', 'Snowboarding', 'Mountain views'],
-    photo: 'switzerland.jpg',
+    media: ['switzerland-1.jpg'],
     color: '#8ef0d2',
   },
   {
@@ -123,7 +126,10 @@ export const TRIPS = [
     blurb:
       'The Eiffel sparkling on the hour, a boat down the Seine, and dinners worth every euro.',
     highlights: ['Eiffel Tower', 'Seine boat tour', 'Dinners'],
-    photo: 'paris.jpg',
+    media: [
+      'paris-1.jpg',
+      'paris-2.jpg',
+    ],
     color: '#ffd166',
   },
   {
@@ -136,9 +142,12 @@ export const TRIPS = [
     lat: 51.5074,
     lon: -0.1278,
     blurb:
-      'Stamford Bridge for Chelsea v Burnley, a casino run, and London nights out.',
-    highlights: ['Chelsea v Burnley', 'Casino', 'Clubs'],
-    photo: 'london.jpg',
+      'Stamford Bridge for Chelsea v Burnley, and London after dark.',
+    highlights: ['Chelsea v Burnley', 'Stamford Bridge', 'Exploring'],
+    media: [
+      'london-1.jpg',
+      'london-2.jpg',
+    ],
     color: '#7aa2ff',
   },
   {
@@ -153,7 +162,7 @@ export const TRIPS = [
     blurb:
       'Markets, wine, and wandering the porticoes with Dohan.',
     highlights: ['Markets', 'Wine', 'Exploring'],
-    photo: 'bologna.jpg',
+    media: ['bologna-1.jpg'],
     color: '#e0854a',
   },
   {
@@ -166,9 +175,13 @@ export const TRIPS = [
     lat: 43.82,
     lon: 11.42,
     blurb:
-      'The boys flew in and Florence became home base — with runs to Venice and Rome. One week, zero sleep.',
+      'The boys flew in and Florence became home base — with runs to Venice and Rome. One week, nonstop.',
     highlights: ['Venice canals', 'Florence tour-guide duty', 'Rome round two'],
-    photo: 'springbreak.jpg',
+    media: [
+      'springbreak-1.jpg',
+      'springbreak-2.jpg',
+      'springbreak-3.jpg',
+    ],
     color: '#6ee7b7',
   },
   {
@@ -181,9 +194,13 @@ export const TRIPS = [
     lat: 50.0755,
     lon: 14.4378,
     blurb:
-      'Chimney cakes by day, a literal beer spa by afternoon, castle views and Prague nights.',
-    highlights: ['Prague Castle', 'Beer spa', 'Chimney cakes', 'Markets', 'Clubs'],
-    photo: 'prague.jpg',
+      'Chimney cakes, castle views over the river, and markets worth the walk.',
+    highlights: ['Prague Castle', 'Chimney cakes', 'Markets', 'Old Town'],
+    media: [
+      'prague-1.jpg',
+      'prague-2.jpg',
+      'prague-3.jpg',
+    ],
     color: '#d4a5ff',
   },
   {
@@ -196,9 +213,13 @@ export const TRIPS = [
     lat: 52.3676,
     lon: 4.9041,
     blurb:
-      'Canals, coffee shops, the Red Light District, and Gunna live. Amsterdam did not miss.',
-    highlights: ['Gunna concert', 'Coffee shops', 'Truffles', 'Red Light District', 'Exploring'],
-    photo: 'amsterdam.jpg',
+      'Canals, a Gunna show, and a city best seen from the water. Amsterdam did not miss.',
+    highlights: ['Gunna concert', 'Canal cruise', 'Exploring'],
+    media: [
+      'amsterdam-1.jpg',
+      'amsterdam-2.jpg',
+      'amsterdam-3.jpg',
+    ],
     color: '#ff5d8f',
   },
   {
@@ -206,15 +227,15 @@ export const TRIPS = [
     num: '13',
     month: 'APR',
     title: 'TIME OUT',
-    tag: 'Concussion Week',
+    tag: 'Stayed Put',
     place: 'Florence, Italy',
     lat: 43.7696,
     lon: 11.2558,
     noPin: true,
     blurb:
-      'The one weekend the map did not move. Concussion protocol: couch, gelato, recovery.',
-    highlights: ['No travel', 'Recovery'],
-    photo: 'timeout.jpg',
+      'The one weekend the map did not move. Florence, slow mornings, gelato.',
+    highlights: ['No travel', 'Florence off-duty'],
+    media: ['timeout-1.jpg'],
     color: '#8b95b5',
   },
   {
@@ -229,7 +250,10 @@ export const TRIPS = [
     blurb:
       'Beach morning in Castiglioncello, obligatory Leaning Tower pic by afternoon. One day, two towns.',
     highlights: ['Beach', 'Leaning Tower of Pisa', 'Same-day double'],
-    photo: 'pisa.jpg',
+    media: [
+      'pisa-1.jpg',
+      'pisa-2.jpg',
+    ],
     color: '#ffe08a',
   },
   {
@@ -255,7 +279,11 @@ export const TRIPS = [
       'SMN fragrance & shopping',
       'Vespe Café',
     ],
-    photo: 'family.jpg',
+    media: [
+      'family-1.jpg',
+      'family-2.jpg',
+      'family-3.jpg',
+    ],
     color: '#f7797d',
   },
   {
@@ -268,19 +296,25 @@ export const TRIPS = [
     lat: 31.0994,
     lon: -4.0084,
     blurb:
-      'Rode camels into the Sahara at sunset, boarded the dunes, partied in the desert, and camped under a sky full of stars.',
+      'Rode camels into the Sahara at sunset, boarded the dunes, and camped under a sky full of stars.',
     highlights: [
       'Camel ride at sunset',
       'GOT / Gladiator / OBX castle',
       'Sandboarding',
       'ATVs on the dunes',
-      'Desert party & camping',
+      'Desert camping',
       'Sunrise & sunset',
       'Green turban scarf',
       'Blue rug hoodie',
-      'Met a group of girls',
     ],
-    photo: 'morocco.jpg',
+    media: [
+      'morocco-1.jpg',
+      'morocco-2.jpg',
+      'morocco-3.jpg',
+      'morocco-4.jpg',
+      'morocco-5.jpg',
+      'morocco-6.jpg',
+    ],
     color: '#ff8a3c',
   },
   {
@@ -293,9 +327,15 @@ export const TRIPS = [
     lat: 35.8989,
     lon: 14.5146,
     blurb:
-      'Boat cruise around the island, beach days, dinners, Malta nights.',
-    highlights: ['Boat cruise', 'Beach', 'Dinner', 'Clubs'],
-    photo: 'malta.jpg',
+      'Boat cruise around the island, beach days, and long dinners by the water.',
+    highlights: ['Boat cruise', 'Beach', 'Dinner', 'Valletta'],
+    media: [
+      'malta-1.jpg',
+      'malta-2.jpg',
+      'malta-3.jpg',
+      'malta-4.jpg',
+      'malta-5.jpg',
+    ],
     color: '#4cc9f0',
   },
   {
@@ -309,12 +349,17 @@ export const TRIPS = [
     lon: 14.6027,
     blurb:
       'Closed it out in a cliffside villa with 30 people — boat cruise to Capri, pool days, one last sunset over the Tyrrhenian.',
-    highlights: ['30-person villa', 'Boat cruise', 'Capri', 'Pool days', 'Bars & dinners'],
-    photo: 'amalfi.jpg',
+    highlights: ['30-person villa', 'Boat cruise', 'Capri', 'Pool days', 'Dinners out'],
+    media: [
+      'amalfi-1.jpg',
+      'amalfi-2.jpg',
+      'amalfi-3.jpg',
+      { src: 'amalfi-4.mp4', type: 'video' },
+    ],
     color: '#57cc99',
   },
 ]
 
 // Pinned trips in order = the route the camera (and the drawn
-// flight path) follows. Concussion week keeps the camera home.
+// flight path) follows. The stay-put week keeps the camera home.
 export const ROUTE = TRIPS.filter((t) => !t.noPin)
