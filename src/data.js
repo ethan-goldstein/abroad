@@ -35,7 +35,6 @@ export const TRIPS = [
     highlights: ['Home base', 'Duomo', 'Piazzale Michelangelo', 'Trattoria dinners'],
     media: [],
     color: '#59d9ff',
-    zoom: 1.00761,
   },
   {
     id: 'tuscany',
@@ -51,7 +50,6 @@ export const TRIPS = [
     highlights: ['Wine tour', 'Vineyards', 'Cellar tastings', 'Hill towns'],
     media: ['tuscany-1.jpg'],
     color: '#c05a78',
-    zoom: 1.00765,
   },
   {
     id: 'rome',
@@ -67,7 +65,6 @@ export const TRIPS = [
     highlights: ['Colosseum', 'Spanish Steps', 'Trevi Fountain'],
     media: ['rome-1.jpg'],
     color: '#f2a154',
-    zoom: 1.00392,
   },
   {
     id: 'pompeii',
@@ -83,7 +80,6 @@ export const TRIPS = [
     highlights: ['Pompeii ruins', 'Mount Vesuvius', 'Naples'],
     media: ['pompeii-1.jpg'],
     color: '#ff6b4a',
-    zoom: 1.00201,
   },
   {
     id: 'milan',
@@ -102,7 +98,6 @@ export const TRIPS = [
       { src: 'milan-2.mp4', type: 'video' },
     ],
     color: '#9ecbff',
-    zoom: 1.0074,
   },
   {
     id: 'switzerland',
@@ -118,7 +113,6 @@ export const TRIPS = [
     highlights: ['Swiss Alps', 'Snowboarding', 'Mountain views'],
     media: ['switzerland-1.jpg'],
     color: '#8ef0d2',
-    zoom: 1.00722,
   },
   {
     id: 'paris',
@@ -137,7 +131,6 @@ export const TRIPS = [
       'paris-2.jpg',
     ],
     color: '#ffd166',
-    zoom: 1.00694,
   },
   {
     id: 'london',
@@ -156,7 +149,6 @@ export const TRIPS = [
       'london-2.jpg',
     ],
     color: '#7aa2ff',
-    zoom: 1.00328,
   },
   {
     id: 'bologna',
@@ -172,7 +164,6 @@ export const TRIPS = [
     highlights: ['Markets', 'Wine', 'Exploring'],
     media: ['bologna-1.jpg'],
     color: '#e0854a',
-    zoom: 1.00753,
   },
   {
     id: 'springbreak',
@@ -192,7 +183,6 @@ export const TRIPS = [
       'springbreak-3.jpg',
     ],
     color: '#6ee7b7',
-    zoom: 1.00379,
   },
   {
     id: 'prague',
@@ -212,7 +202,6 @@ export const TRIPS = [
       'prague-3.jpg',
     ],
     color: '#d4a5ff',
-    zoom: 1.00677,
   },
   {
     id: 'amsterdam',
@@ -232,7 +221,6 @@ export const TRIPS = [
       'amsterdam-3.jpg',
     ],
     color: '#ff5d8f',
-    zoom: 1.00645,
   },
   {
     id: 'timeout',
@@ -249,7 +237,6 @@ export const TRIPS = [
     highlights: ['No travel', 'Florence off-duty'],
     media: ['timeout-1.jpg'],
     color: '#8b95b5',
-    zoom: 1.00761,
   },
   {
     id: 'pisa',
@@ -268,7 +255,6 @@ export const TRIPS = [
       'pisa-2.jpg',
     ],
     color: '#ffe08a',
-    zoom: 1.00763,
   },
   {
     id: 'family',
@@ -299,7 +285,6 @@ export const TRIPS = [
       'family-3.jpg',
     ],
     color: '#f7797d',
-    zoom: 1.00392,
   },
   {
     id: 'morocco',
@@ -331,7 +316,6 @@ export const TRIPS = [
       'morocco-6.jpg',
     ],
     color: '#ff8a3c',
-    zoom: 1.00451,
   },
   {
     id: 'malta',
@@ -353,7 +337,6 @@ export const TRIPS = [
       'malta-5.jpg',
     ],
     color: '#4cc9f0',
-    zoom: 1.00213,
   },
   {
     id: 'amalfi',
@@ -374,7 +357,6 @@ export const TRIPS = [
       { src: 'amalfi-4.mp4', type: 'video' },
     ],
     color: '#57cc99',
-    zoom: 1.00201,
   },
 ]
 

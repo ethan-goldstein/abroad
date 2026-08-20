@@ -264,14 +264,14 @@ export default function App() {
 
     // camera keyframes: hero → each trip → pulled-back explore view
     const keys = [
-      { lat: 45, lon: 10, dist: 7.2, route: 0 },
+      { lat: 45, lon: 10, dist: 3.6, route: 0 },
       ...TRIPS.map((t) => ({
         lat: t.lat,
         lon: t.lon,
-        dist: t.zoom ?? 1.0038,
+        dist: t.zoom ?? 1.6,
         route: -1, // filled below
       })),
-      { lat: 42, lon: 8, dist: 3.6, route: ROUTE.length - 1 },
+      { lat: 42, lon: 8, dist: 3.1, route: ROUTE.length - 1 },
     ]
     TRIPS.forEach((t, i) => {
       const idx = ROUTE.indexOf(t)
@@ -301,11 +301,8 @@ export default function App() {
         const vT = latLonToVec3(to.lat, to.lon, 1)
         const angle = vF.angleTo(vT)
         const sinA = Math.sin(angle)
-        // Cruise high enough that the global texture still reads. Short hops used
-        // to level off around 380 km, which is the worst of both worlds: too high
-        // for city imagery, far too low for a 9.8 km/px earth texture, so the
-        // whole transit was a blur.
-        const climb = 0.26 + Math.min(angle * 0.5, 0.55)
+        // stay low: barely climb on short hops, modest rise on long ones
+        const climb = 0.06 + Math.min(angle * 0.5, 0.55)
         ScrollTrigger.create({
           trigger: section,
           start: 'top bottom',
@@ -352,8 +349,6 @@ export default function App() {
               globe.setActive(TRIPS[i].id)
             }
           },
-          // the city outline traces on with the scroll rather than on a timer
-          onUpdate: (self) => globe.setArrivalProgress(TRIPS[i].id, self.progress),
         })
       })
 
@@ -512,11 +507,6 @@ export default function App() {
             </button>
             <span className="credit">
               {META.name} · SPRING '26 · THE TIME OF MY LIFE
-              <em className="credit-imagery">
-                Satellite imagery: Sentinel-2 cloudless by EOX IT Services GmbH
-                (contains modified Copernicus Sentinel data 2024) · City boundaries
-                © OpenStreetMap contributors
-              </em>
             </span>
           </div>
         </section>

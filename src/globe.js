@@ -1,8 +1,5 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { Line2 } from 'three/addons/lines/Line2.js'
-import { LineGeometry } from 'three/addons/lines/LineGeometry.js'
-import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
 import gsap from 'gsap'
 
 const ACCENT = new THREE.Color('#ff8a3c')
@@ -14,28 +11,6 @@ const ACTIVE = new THREE.Color('#ffffff')
 const SURF = 1.012
 
 let _dotTex = null
-// Radial falloff so a detail patch dissolves into the globe at its rim instead
-// of ending in a hard square edge. One canvas, shared by every patch.
-let _featherTex = null
-function featherTexture() {
-  if (_featherTex) return _featherTex
-  const size = 256
-  const c = document.createElement('canvas')
-  c.width = c.height = size
-  const ctx = c.getContext('2d')
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, size, size)
-  // blurred inset rect: opaque across the middle, soft only at the rim, so the
-  // patch keeps its full frame instead of being cropped to a circle
-  const inset = size * 0.1
-  ctx.filter = `blur(${size * 0.055}px)`
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(inset, inset, size - inset * 2, size - inset * 2)
-  ctx.filter = 'none'
-  _featherTex = new THREE.CanvasTexture(c)
-  return _featherTex
-}
-
 function roundDotTexture() {
   if (_dotTex) return _dotTex
   const c = document.createElement('canvas')
@@ -92,8 +67,6 @@ export class TravelGlobe {
     this._buildStars()
     this._bindEvents()
     this._loadEarth()
-    this._initDetail()
-    this._initOutlines()
 
     this._loop = this._loop.bind(this)
     this._raf = requestAnimationFrame(this._loop)
@@ -102,30 +75,18 @@ export class TravelGlobe {
   _initScene() {
     const { clientWidth: w, clientHeight: h } = this.container
     this.scene = new THREE.Scene()
-    // near must be tiny to descend to ~25 km altitude without clipping the
-    // surface; the resulting near/far ratio needs the log depth buffer below
-    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.0002, 300)
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 200)
     this.camera.position.copy(latLonToVec3(this.view.lat, this.view.lon, this.view.dist))
     this.camera.lookAt(0, 0, 0)
 
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      // near/far spans ~1e6 so a normal depth buffer z-fights badly
-      logarithmicDepthBuffer: true,
-      // lets toDataURL read real frames back for visual checks; dev only, it
-      // costs performance on some GPUs
-      preserveDrawingBuffer: import.meta.env.DEV,
-    })
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(w, h)
     this.container.appendChild(this.renderer.domElement)
 
     // bright, even illumination so the 4K texture reads crisp everywhere
-    this._amb = new THREE.AmbientLight(0xffffff, 0.85)
-    this.scene.add(this._amb)
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.85))
     const sun = new THREE.DirectionalLight(0xfff4e0, 1.25)
-    this._sun = sun
     sun.position.set(3, 2.2, 3.5)
     this.scene.add(sun)
     const rim = new THREE.DirectionalLight(0x6a8fff, 0.25)
@@ -137,11 +98,8 @@ export class TravelGlobe {
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.06
     this.controls.enablePan = false
-    this.controls.minDistance = 1.004   // ~25 km altitude
-    this.controls.maxDistance = 14      // stars start at r16 — stay inside them
-    // default steps are far too coarse across a 1.004..14 range
-    this.controls.zoomSpeed = 0.75
-    this.controls.zoomToCursor = true
+    this.controls.minDistance = 1.18
+    this.controls.maxDistance = 4.5
     this.controls.autoRotate = false
     this.controls.autoRotateSpeed = 0.35
 
@@ -150,12 +108,6 @@ export class TravelGlobe {
       this.camera.aspect = clientWidth / clientHeight
       this.camera.updateProjectionMatrix()
       this.renderer.setSize(clientWidth, clientHeight)
-      // fat lines need pixel resolution to size their width
-      if (this.outlines) {
-        for (const e of this.outlines.values()) {
-          for (const { line } of e.lines) line.material.resolution.set(clientWidth, clientHeight)
-        }
-      }
     }
     window.addEventListener('resize', this._resize)
   }
@@ -168,14 +120,9 @@ export class TravelGlobe {
     )
     this.scene.add(this.placeholder)
 
-    // Rim glow. This is a BackSide shell at r1.12, so any camera closer than
-    // that ends up *inside* it and renders its interior over the whole frame —
-    // the old minDistance of 1.18 was what kept us out. Now that the camera can
-    // reach r1.004, uOpacity fades the shell out before we cross it.
     const atmo = new THREE.Mesh(
       new THREE.SphereGeometry(1, 64, 64),
       new THREE.ShaderMaterial({
-        uniforms: { uOpacity: { value: 1 } },
         vertexShader: `
           varying vec3 vNormal;
           void main() {
@@ -183,13 +130,10 @@ export class TravelGlobe {
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }`,
         fragmentShader: `
-          uniform float uOpacity;
           varying vec3 vNormal;
           void main() {
-            // unclamped this exceeds 1.0 at grazing angles and clips to white
-            float intensity = clamp(
-              pow(0.52 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 5.0), 0.0, 1.0);
-            gl_FragColor = vec4(0.35, 0.6, 1.0, 1.0) * intensity * 0.85 * uOpacity;
+            float intensity = pow(0.52 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 5.0);
+            gl_FragColor = vec4(0.35, 0.6, 1.0, 1.0) * intensity * 0.85;
           }`,
         blending: THREE.AdditiveBlending,
         side: THREE.BackSide,
@@ -198,7 +142,6 @@ export class TravelGlobe {
       })
     )
     atmo.scale.setScalar(1.12)
-    this.atmo = atmo
     this.scene.add(atmo)
   }
 
@@ -249,313 +192,6 @@ export class TravelGlobe {
       this.placeholder = null
     } catch (e) {
       console.warn('earth textures failed to load, keeping placeholder', e)
-    }
-  }
-
-  // ---- high-resolution pin imagery -------------------------------------
-  // The global Blue Marble texture is ~9.8 km/px, so descending into a city
-  // just magnifies blur. Each pin has a pre-baked Sentinel-2 crop (~14 m/px)
-  // that fades in as the camera drops, laid on a curved patch that hugs the
-  // sphere so it can't z-fight the surface underneath.
-  async _initDetail() {
-    this.detail = new Map()
-    this._detailMeta = null
-    try {
-      const res = await fetch(`${import.meta.env.BASE_URL}earth/detail/index.json`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      this._detailMeta = new Map(json.patches.map((p) => [p.id, p]))
-    } catch (e) {
-      // no imagery baked yet — the globe just keeps its global texture
-      console.warn('pin imagery index unavailable, skipping detail patches', e)
-    }
-  }
-
-  // Build the patch + kick off its texture. Safe to call repeatedly.
-  _ensureDetail(id) {
-    if (!this._detailMeta || this.detail.has(id)) return this.detail.get(id)
-    const m = this._detailMeta.get(id)
-    if (!m) return null
-
-    // Three's sphere: phi is azimuth, theta polar from +Y. This globe places
-    // points at phi = lon + PI, theta = 90 - lat (see latLonToVec3).
-    const d2r = THREE.MathUtils.degToRad
-    const thetaStart = d2r(90 - m.north)
-    const thetaLength = d2r(m.north - m.south)
-    const phiStart = d2r(m.west) + Math.PI
-    const phiLength = d2r(m.east - m.west)
-
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(1.0006, 48, 48, phiStart, phiLength, thetaStart, thetaLength),
-      // Unlit on purpose. Phong left the imagery at the mercy of the sun's angle,
-      // and half the pins sat in shade — the whole point is to see the place.
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0,
-        depthWrite: false,
-        alphaMap: featherTexture(),
-      })
-    )
-    mesh.visible = false
-    mesh.renderOrder = 2
-    this.scene.add(mesh)
-
-    const entry = { mesh, meta: m, opacity: 0, center: latLonToVec3(m.lat, m.lon, 1) }
-    this.detail.set(id, entry)
-
-    new THREE.TextureLoader().load(
-      `${import.meta.env.BASE_URL}earth/detail/${id}.jpg`,
-      (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace
-        tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
-        mesh.material.map = tex
-        mesh.material.needsUpdate = true
-        entry.ready = true
-      },
-      undefined,
-      () => {
-        // texture missing: drop the patch so we fall back to the globe texture
-        this.scene.remove(mesh)
-        mesh.geometry.dispose()
-        mesh.material.dispose()
-        this.detail.delete(id)
-      }
-    )
-    return entry
-  }
-
-  _updateDetail() {
-    if (!this._detailMeta) return 0
-    const camDir = this.camera.position.clone().normalize()
-    const alt = this.camera.position.length() - 1
-
-    // start fetching a little before the imagery is needed so it has time to
-    // decode; below ~0.012 (75 km) it is fully opaque
-    // Fade on how much of the frame the crop actually covers, not on raw
-    // altitude. Crops run 9 km to 35 km and each trip now settles at its own
-    // distance, so a fixed altitude band would leave the big ones half faded.
-    const visible = 2 * alt * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))
-    const winnerMeta = this._detailMeta.get(this.activeId) || null
-    const spanRad = winnerMeta ? ((winnerMeta.east - winnerMeta.west) * Math.PI) / 180 : 0.003
-    const altFade = THREE.MathUtils.smoothstep(spanRad / Math.max(visible, 1e-6), 0.5, 0.85)
-
-    // Prefetch generously — neighbours loading early is good. Only ever SHOW
-    // one, though: Florence, Tuscany and Spring Break sit 0.25 degrees apart,
-    // so a proximity test alone lights three patches at once and they read as
-    // squares pasted on the globe.
-    if (altFade > 0.001 || alt < 0.02) {
-      for (const [id, m] of this._detailMeta) {
-        if (camDir.dot(latLonToVec3(m.lat, m.lon, 1)) > 0.9985) this._ensureDetail(id)
-      }
-    }
-
-    // scroll mode follows the active section; explore mode takes whichever
-    // patch the camera is most directly above
-    let winner = null
-    if (!this.explore && this.activeId && this.detail.has(this.activeId)) {
-      winner = this.activeId
-    } else {
-      let best = 0.999
-      for (const [id, entry] of this.detail) {
-        const d = camDir.dot(entry.center)
-        if (d > best) {
-          best = d
-          winner = id
-        }
-      }
-    }
-
-    for (const [id, entry] of this.detail) {
-      const target = entry.ready && id === winner ? altFade : 0
-      entry.opacity += (target - entry.opacity) * 0.12
-      entry.mesh.material.opacity = entry.opacity
-      entry.mesh.visible = entry.opacity > 0.004
-      entry.mesh.material.needsUpdate = false
-    }
-    return altFade
-  }
-
-  // ---- arrival sequence ------------------------------------------------
-  // Landing on a flat satellite crop is inert, so the city announces itself:
-  // its real OSM boundary traces around the perimeter, then the ground outside
-  // that boundary dims so the place reads as a place. Trips whose pin isn't a
-  // city (the Sahara; Pisa's comune is far larger than the crop) have no
-  // boundary and get an expanding reticle instead — never an invented outline.
-  async _initOutlines() {
-    this.outlines = new Map()
-    this._outlineMeta = null
-    this._arrival = null
-    try {
-      const res = await fetch(`${import.meta.env.BASE_URL}earth/detail/outlines.json`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      this._outlineMeta = new Map(json.outlines.map((o) => [o.id, o]))
-    } catch (e) {
-      console.warn('city outlines unavailable', e)
-    }
-  }
-
-  _ensureOutline(id) {
-    if (!this._outlineMeta || this.outlines.has(id)) return this.outlines.get(id)
-    const meta = this._outlineMeta.get(id)
-    const patch = this._detailMeta?.get(id)
-    if (!meta || !patch) return null
-
-    const trip = this.trips.find((t) => t.id === id)
-    const color = new THREE.Color(trip?.color || ACCENT)
-    const entry = { id, hasOutline: meta.hasOutline, lines: [], total: 0, a: 0 }
-
-    if (meta.hasOutline) {
-      for (const ring of meta.rings) {
-        const pts = ring.map(([lon, lat]) => latLonToVec3(lat, lon, 1.0011))
-        pts.push(pts[0].clone())
-        const flat = []
-        for (const v of pts) flat.push(v.x, v.y, v.z)
-        const geo = new LineGeometry()
-        geo.setPositions(flat)
-        // total arc length drives the dash-based draw-on below
-        let len = 0
-        for (let i = 1; i < pts.length; i++) len += pts[i].distanceTo(pts[i - 1])
-        const mat = new LineMaterial({
-          color: color.getHex(),
-          linewidth: 2.4,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-          dashed: true,
-          dashSize: len,
-          gapSize: len,
-          dashOffset: len,
-        })
-        mat.resolution.set(this.container.clientWidth || 1, this.container.clientHeight || 1)
-        const line = new Line2(geo, mat)
-        line.computeLineDistances()
-        line.renderOrder = 5
-        line.visible = false
-        this.scene.add(line)
-        entry.lines.push({ line, len })
-      }
-
-      // Dim everything outside the boundary: a quad over the patch footprint
-      // with the city punched out as a hole, so the city stays lit.
-      // pad far beyond the imagery: a quad sized to the crop shows its own
-      // straight edges as seams once it dims
-      const padX = (patch.east - patch.west) * 2.5
-      const padY = (patch.north - patch.south) * 2.5
-      const shape = new THREE.Shape([
-        new THREE.Vector2(patch.west - padX, patch.south - padY),
-        new THREE.Vector2(patch.east + padX, patch.south - padY),
-        new THREE.Vector2(patch.east + padX, patch.north + padY),
-        new THREE.Vector2(patch.west - padX, patch.north + padY),
-      ])
-      for (const ring of meta.rings) {
-        shape.holes.push(new THREE.Path(ring.map(([lon, lat]) => new THREE.Vector2(lon, lat))))
-      }
-      const shapeGeo = new THREE.ShapeGeometry(shape)
-      // ShapeGeometry lays out flat in lon/lat; lift each vertex onto the sphere
-      const pos = shapeGeo.attributes.position
-      for (let i = 0; i < pos.count; i++) {
-        const v = latLonToVec3(pos.getY(i), pos.getX(i), 1.0008)
-        pos.setXYZ(i, v.x, v.y, v.z)
-      }
-      pos.needsUpdate = true
-      shapeGeo.computeVertexNormals()
-      const dim = new THREE.Mesh(
-        shapeGeo,
-        new THREE.MeshBasicMaterial({
-          color: 0x03060f,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-        })
-      )
-      dim.renderOrder = 4
-      dim.visible = false
-      this.scene.add(dim)
-      entry.dim = dim
-    } else {
-      // no real boundary — a reticle marks the spot without claiming a shape
-      const m = this._detailMeta.get(id)
-      // size to the crop — a fixed radius was a 24 km ring inside an 18 km frame
-      const halfSpan = ((m.east - m.west) * Math.PI) / 360
-      const r = Math.max(halfSpan * 0.11, 0.00012)
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(r, r * 1.07, 72),
-        new THREE.MeshBasicMaterial({
-          color: color.clone(),
-          transparent: true,
-          opacity: 0,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-        })
-      )
-      const at = latLonToVec3(m.lat, m.lon, 1.0011)
-      ring.position.copy(at)
-      ring.lookAt(at.clone().multiplyScalar(2))
-      ring.renderOrder = 5
-      ring.visible = false
-      this.scene.add(ring)
-      entry.reticle = ring
-    }
-
-    this.outlines.set(id, entry)
-    return entry
-  }
-
-  // called from the per-section ScrollTrigger so the boundary traces on as the
-  // section scrolls into view
-  setArrivalProgress(id, p) {
-    this._scrollP = { id, p }
-  }
-
-  _updateArrival(t, altFade) {
-    if (!this._outlineMeta) return
-    const active = !this.explore && this.activeId ? this.activeId : null
-    if (active && (!this._arrival || this._arrival.id !== active)) {
-      this._ensureOutline(active)
-      this._arrival = { id: active, start: t }
-    }
-
-    for (const [id, e] of this.outlines) {
-      const on = this._arrival && this._arrival.id === id ? 1 : 0
-      // gate on altFade so nothing shows while the imagery is still hidden
-      const target = on * altFade
-      e.a += (target - e.a) * 0.09
-
-      // Scroll drives the trace when there is scroll to read; explore mode has
-      // none, so it falls back to a timed draw on arrival.
-      const elapsed = this._arrival && this._arrival.id === id ? t - this._arrival.start : 0
-      const scrolled = this._scrollP && this._scrollP.id === id ? this._scrollP.p : null
-      const draw =
-        scrolled != null && !this.explore
-          ? THREE.MathUtils.clamp(scrolled / 0.55, 0, 1)
-          : THREE.MathUtils.clamp(elapsed / 1.3, 0, 1)
-      const eased = draw * draw * (3 - 2 * draw)
-
-      for (const { line, len } of e.lines) {
-        // dash pattern is one dash + one gap, each the full length, so sliding
-        // the offset from len to 0 traces the boundary on
-        line.material.dashOffset = len * (1 - eased)
-        line.material.opacity = e.a
-        line.visible = e.a > 0.01
-      }
-      if (e.dim) {
-        // dim only once the line has closed, or it reads as a rendering fault
-        const after =
-          scrolled != null && !this.explore
-            ? THREE.MathUtils.clamp((scrolled - 0.55) / 0.25, 0, 1)
-            : THREE.MathUtils.clamp((elapsed - 1.3) / 0.7, 0, 1)
-        e.dim.material.opacity = e.a * after * 0.38
-        e.dim.visible = e.dim.material.opacity > 0.01
-      }
-      if (e.reticle) {
-        const pulse = 1 + Math.sin(elapsed * 1.6) * 0.12
-        e.reticle.scale.setScalar(pulse * (0.6 + eased * 0.4))
-        e.reticle.material.opacity = e.a * 0.9
-        e.reticle.visible = e.a > 0.01
-      }
     }
   }
 
@@ -751,7 +387,7 @@ export class TravelGlobe {
     }
   }
 
-  flyTo(trip, dist = 1.05) {
+  flyTo(trip, dist = 1.5) {
     const target = latLonToVec3(trip.lat, trip.lon, dist)
     this.controls.autoRotate = false
     gsap.to(this.camera.position, {
@@ -835,12 +471,9 @@ export class TravelGlobe {
         this._raycast()
       }
     } else {
-      // Camera from scroll state + a gentle drift toward the cursor. The drift
-      // has to scale with altitude: 2.4 degrees is a nudge from orbit but ~270 km
-      // up close, which would sail straight off the pin's imagery patch.
-      const drift = THREE.MathUtils.clamp((this.view.dist - 1) / 0.6, 0.04, 1)
-      const lat = this.view.lat - this._par.y * 2.4 * drift
-      const lon = this.view.lon + this._par.x * 3.2 * drift
+      // camera from scroll state + a gentle drift toward the cursor
+      const lat = this.view.lat - this._par.y * 2.4
+      const lon = this.view.lon + this._par.x * 3.2
       this.camera.position.copy(latLonToVec3(lat, lon, this.view.dist))
       this.camera.lookAt(this.view.lx, this.view.ly, this.view.lz)
     }
@@ -855,58 +488,25 @@ export class TravelGlobe {
       pin._a = a
     }
 
-    // Pins belong to the explore map, where they are clickable. In the scroll
-    // story each section already carries its own title, so a pin there is just a
-    // dot sitting on top of the imagery. Arcs stay — they draw the route.
+    // keep pins near-constant screen size across zoom, pulse rings
     const alt = this.camera.position.length() - 1
-    const ps = THREE.MathUtils.clamp(alt * 1.05, 0.02, 1.9)
+    const ps = THREE.MathUtils.clamp(alt * 1.05, 0.55, 1.9)
     for (const pin of this.pins) {
       const pulse = pin._active
         ? 1.3 + Math.sin(t * 3.2) * 0.25
         : 1 + Math.sin(t * 2 + pin.trip.lat) * 0.12
-      const a = this.explore ? pin._a : 0
+      const a = pin._a
       pin.ring.scale.setScalar(Math.max(ps * pulse * a, 0.0001))
       pin.dot.scale.setScalar(Math.max(ps * (pin._active ? 1.4 : 1) * a, 0.0001))
       pin.ring.visible = a > 0.02
       pin.dot.visible = a > 0.02
     }
-    // hit spheres stay live so explore-mode clicks still open a weekend
     for (const hit of this.hitMeshes) hit.scale.setScalar(Math.max(ps, 0.8))
-
-    const _af = this._updateDetail()
-    this._updateArrival(t, _af || 0)
-
-    // Clouds and the rim glow are both wide-view dressing and share one band.
-    // Clouds used to fade on the close-up curve, which left them at ~0.3 opacity
-    // 400 km up — a 4096px texture magnified that far is a screen-sized smear,
-    // not weather.
-    const wide = THREE.MathUtils.smoothstep(this.camera.position.length(), 1.1, 1.25)
-    if (this.atmo) {
-      this.atmo.material.uniforms.uOpacity.value = wide
-      this.atmo.visible = wide > 0.002
-    }
 
     for (const s of this.starGroups) {
       s.rotation.y += s.userData.spin
     }
-    if (this.clouds) {
-      this.clouds.rotation.y += 0.00016
-      this.clouds.material.opacity = 0.34 * wide
-      this.clouds.visible = wide > 0.006
-    }
-
-    // Fade the world down on approach. The global texture is ~9.8 km/px, so up
-    // close it is pure blur; unlighting it means there is nothing soft to look at
-    // and the sharp city imagery is the only lit thing in frame.
-    if (this.earth) {
-      // Cross-fade against the patch, not against altitude. Keyed to altitude
-      // these two curves left a dark gap mid-descent where the world had already
-      // dimmed but the imagery had not yet arrived.
-      const lit = 1 - 0.82 * (_af || 0)
-      this.earth.material.color.setScalar(lit)
-      if (this._sun) this._sun.intensity = 1.25 * lit
-      if (this._amb) this._amb.intensity = 0.1 + 0.75 * lit
-    }
+    if (this.clouds) this.clouds.rotation.y += 0.00016
     this.renderer.render(this.scene, this.camera)
   }
 
